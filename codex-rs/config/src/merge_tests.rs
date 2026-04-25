@@ -8,6 +8,27 @@ fn parse_toml(value: &str) -> TomlValue {
 }
 
 #[test]
+fn merge_toml_values_empty_table_replaces_existing_table() {
+    let mut base = parse_toml(
+        r#"
+[mcp_servers.oar]
+command = "oar"
+args = ["mcp"]
+
+[mcp_servers.omx_state]
+command = "node"
+args = ["state-server.js"]
+"#,
+    );
+    let overlay = parse_toml("mcp_servers = {}");
+
+    merge_toml_values(&mut base, &overlay);
+
+    let expected = parse_toml("mcp_servers = {}");
+    assert_eq!(base, expected);
+}
+
+#[test]
 fn merge_toml_values_normalizes_legacy_key_from_base_layer() {
     let mut base = parse_toml(
         r#"
