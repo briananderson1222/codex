@@ -11,6 +11,7 @@ use codex_config::types::McpServerConfig;
 use codex_config::types::McpServerTransportConfig;
 use codex_core::McpManager;
 use codex_core::config::Config;
+use codex_core::config::ConfigOverrides;
 use codex_core::config::edit::ConfigEditsBuilder;
 use codex_core::config::find_codex_home;
 use codex_core::config::load_global_mcp_servers;
@@ -157,7 +158,7 @@ pub struct LogoutArgs {
 }
 
 impl McpCli {
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(self, config_profile: Option<String>) -> Result<()> {
         let McpCli {
             config_overrides,
             subcommand,
@@ -165,27 +166,45 @@ impl McpCli {
 
         match subcommand {
             McpSubcommand::List(args) => {
-                run_list(&config_overrides, args).await?;
+                run_list(&config_overrides, config_profile.as_deref(), args).await?;
             }
             McpSubcommand::Get(args) => {
-                run_get(&config_overrides, args).await?;
+                run_get(&config_overrides, config_profile.as_deref(), args).await?;
             }
             McpSubcommand::Add(args) => {
-                run_add(&config_overrides, args).await?;
+                run_add(&config_overrides, config_profile.as_deref(), args).await?;
             }
             McpSubcommand::Remove(args) => {
                 run_remove(&config_overrides, args).await?;
             }
             McpSubcommand::Login(args) => {
-                run_login(&config_overrides, args).await?;
+                run_login(&config_overrides, config_profile.as_deref(), args).await?;
             }
             McpSubcommand::Logout(args) => {
-                run_logout(&config_overrides, args).await?;
+                run_logout(&config_overrides, config_profile.as_deref(), args).await?;
             }
         }
 
         Ok(())
     }
+}
+
+async fn load_config(
+    config_overrides: &CliConfigOverrides,
+    config_profile: Option<&str>,
+) -> Result<Config> {
+    let overrides = config_overrides
+        .parse_overrides()
+        .map_err(anyhow::Error::msg)?;
+    Config::load_with_cli_overrides_and_harness_overrides(
+        overrides,
+        ConfigOverrides {
+            config_profile: config_profile.map(str::to_string),
+            ..Default::default()
+        },
+    )
+    .await
+    .context("failed to load configuration")
 }
 
 /// Preserve compatibility with servers that still expect the legacy empty-scope
@@ -236,14 +255,13 @@ async fn perform_oauth_login_retry_without_scopes(
     }
 }
 
-async fn run_add(config_overrides: &CliConfigOverrides, add_args: AddArgs) -> Result<()> {
+async fn run_add(
+    config_overrides: &CliConfigOverrides,
+    config_profile: Option<&str>,
+    add_args: AddArgs,
+) -> Result<()> {
     // Validate any provided overrides even though they are not currently applied.
-    let overrides = config_overrides
-        .parse_overrides()
-        .map_err(anyhow::Error::msg)?;
-    let config = Config::load_with_cli_overrides(overrides)
-        .await
-        .context("failed to load configuration")?;
+    let config = load_config(config_overrides, config_profile).await?;
 
     let AddArgs {
         name,
@@ -387,13 +405,12 @@ async fn run_remove(config_overrides: &CliConfigOverrides, remove_args: RemoveAr
     Ok(())
 }
 
-async fn run_login(config_overrides: &CliConfigOverrides, login_args: LoginArgs) -> Result<()> {
-    let overrides = config_overrides
-        .parse_overrides()
-        .map_err(anyhow::Error::msg)?;
-    let config = Config::load_with_cli_overrides(overrides)
-        .await
-        .context("failed to load configuration")?;
+async fn run_login(
+    config_overrides: &CliConfigOverrides,
+    config_profile: Option<&str>,
+    login_args: LoginArgs,
+) -> Result<()> {
+    let config = load_config(config_overrides, config_profile).await?;
     let mcp_manager = McpManager::new(Arc::new(PluginsManager::new(
         config.codex_home.to_path_buf(),
     )));
@@ -440,13 +457,12 @@ async fn run_login(config_overrides: &CliConfigOverrides, login_args: LoginArgs)
     Ok(())
 }
 
-async fn run_logout(config_overrides: &CliConfigOverrides, logout_args: LogoutArgs) -> Result<()> {
-    let overrides = config_overrides
-        .parse_overrides()
-        .map_err(anyhow::Error::msg)?;
-    let config = Config::load_with_cli_overrides(overrides)
-        .await
-        .context("failed to load configuration")?;
+async fn run_logout(
+    config_overrides: &CliConfigOverrides,
+    config_profile: Option<&str>,
+    logout_args: LogoutArgs,
+) -> Result<()> {
+    let config = load_config(config_overrides, config_profile).await?;
     let mcp_manager = McpManager::new(Arc::new(PluginsManager::new(
         config.codex_home.to_path_buf(),
     )));
@@ -472,13 +488,12 @@ async fn run_logout(config_overrides: &CliConfigOverrides, logout_args: LogoutAr
     Ok(())
 }
 
-async fn run_list(config_overrides: &CliConfigOverrides, list_args: ListArgs) -> Result<()> {
-    let overrides = config_overrides
-        .parse_overrides()
-        .map_err(anyhow::Error::msg)?;
-    let config = Config::load_with_cli_overrides(overrides)
-        .await
-        .context("failed to load configuration")?;
+async fn run_list(
+    config_overrides: &CliConfigOverrides,
+    config_profile: Option<&str>,
+    list_args: ListArgs,
+) -> Result<()> {
+    let config = load_config(config_overrides, config_profile).await?;
     let mcp_manager = McpManager::new(Arc::new(PluginsManager::new(
         config.codex_home.to_path_buf(),
     )));
@@ -727,13 +742,12 @@ async fn run_list(config_overrides: &CliConfigOverrides, list_args: ListArgs) ->
     Ok(())
 }
 
-async fn run_get(config_overrides: &CliConfigOverrides, get_args: GetArgs) -> Result<()> {
-    let overrides = config_overrides
-        .parse_overrides()
-        .map_err(anyhow::Error::msg)?;
-    let config = Config::load_with_cli_overrides(overrides)
-        .await
-        .context("failed to load configuration")?;
+async fn run_get(
+    config_overrides: &CliConfigOverrides,
+    config_profile: Option<&str>,
+    get_args: GetArgs,
+) -> Result<()> {
+    let config = load_config(config_overrides, config_profile).await?;
     let mcp_manager = McpManager::new(Arc::new(PluginsManager::new(
         config.codex_home.to_path_buf(),
     )));
